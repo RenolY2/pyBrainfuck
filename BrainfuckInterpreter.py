@@ -15,8 +15,18 @@ BRAINFUCK_SYMBOLS = {
     ",": True,
     "[": True,
     "]": True
-
 }
+
+
+## Behaviour of the input function when encountering an end of file.
+## Bf does not have an official convention on what to do with an EOF
+## on input, so we will have to implement several options.
+# Handle an EOF as a zero value
+EOF_AS_0 = 0
+# Handle an EOF as a -1 value. This is equivalent to 255 in an unsigned byte.
+EOF_AS_MINUS_1 = 1
+# Handle an EOF by not changing the value at the pointer at all.
+EOF_AS_UNCHANGED = 2
 
 class UnmatchedBracket(Exception):
     def __init__(self, char, charPos):
@@ -38,6 +48,7 @@ class Interpreter(object):
                  initSize=300000, arrayLimit=None, extendSize=1000,
                  stdin = sys.stdin, stdout = sys.stdout,
                  wrapAround = True,
+                 newline_as_eof = False, handle_eof = EOF_AS_UNCHANGED,
                  dataType = "B", dataSize = 2**8):
 
         self.filehandle = filehandle
@@ -59,6 +70,15 @@ class Interpreter(object):
 
         self._wrapAround = wrapAround
         self._dataType = dataType
+
+        self._handle_eof = handle_eof
+        assert self._handle_eof in (EOF_AS_0, EOF_AS_MINUS_1, EOF_AS_UNCHANGED)
+
+        # If this flag is set to true, then \n will be
+        # interpreted as an end of file when reading from
+        # stdin. This can be useful when you use sys.stdin and
+        # pressing enter in the console creates a newline character.
+        self._newline_as_eof = newline_as_eof
 
         self.array = array(self._dataType, (0 for i in xrange(initSize)))
 
@@ -197,12 +217,17 @@ class Interpreter(object):
     def input_char(self):
         #print "Do Input!"
         char = self.stdin.read(1)
-        #if char == "":
-        #    #print "Input is EOF"
-        #    self.array[self.pointer] = 255
-        #else:
-            #print "Input is ",char
-        self.array[self.pointer] = ord(char)%256
+        if (char == "" or
+                (self._newline_as_eof and char == "\n")):
+
+            if self._handle_eof == EOF_AS_0:
+                self.array[self.pointer] = 0
+            elif self._handle_eof == EOF_AS_MINUS_1:
+                self.array[self.pointer] = 255
+            elif self._handle_eof == EOF_AS_UNCHANGED:
+                pass
+        else:
+            self.array[self.pointer] = ord(char)%256
 
 
     def __check_pointer_limit(self):
@@ -241,7 +266,8 @@ if __name__ == "__main__":
     stdinput = StringIO("Hello World!")
     stdoutput = StringIO()
 
-    brainf = Interpreter(filehandle, stdin=stdinput, stdout=stdoutput)
+    brainf = Interpreter(filehandle, stdout=stdoutput,
+                         newline_as_eof=True,  handle_eof=EOF_AS_MINUS_1)
 
 
     start = default_timer()
